@@ -29,11 +29,20 @@ The goal of this project is to recreate the "Spacetime reconstruction in 4D" eff
 - [Nerfstudio](https://docs.nerf.studio/quickstart/installation.html) installed for 3D Background Reconstruction.
 
 **Setup:**
+
 ```bash
 git clone https://github.com/debo-flow/4D-Volumetric-Trails.git
 cd 4D-Volumetric-Trails
 pip install -r requirements.txt
+```
 
+---
+
+## 💻 Usage (Step-by-Step)
+
+Ensure you have your input video placed in `data/input/`. You can copy and run the following commands sequentially:
+
+```bash
 # Step 1: Extract Frames from Video
 python src/video_processor.py --video data/input/your_video.mp4 --output data/frames
 
@@ -51,9 +60,17 @@ python src/spacetime_projector.py --transforms data/3d_model/ns_data/transforms.
 
 # Step 6: Launch Interactive Web Viewer
 python src/web_viewer.py --model data/output/spacetime_trail.glb
+```
 
-Project Milestones
-​[x] v0.1.0-alpha: Core Data Processing Pipeline (Frame extraction, COLMAP tracking, YOLOv8 segmentation).
-​[x] v0.2.0-alpha: Background Environment Reconstruction using 3D Gaussian Splatting (Nerfstudio).
-​[x] v0.3.0-alpha: Space-Time projection and dynamic .glb 3D model generation.
-​[x] v1.0.0: Final interactive 4D visualization UI via web browser.
+*(After running Step 6, open the provided local web link, e.g., `[http://127.0.0.1:7860](http://127.0.0.1:7860)`, in your browser to view your 4D trail).*
+
+---
+
+## 🗺️ Project Milestones
+- [x] **v0.1.0-alpha:** Core Data Processing Pipeline (Frame extraction, COLMAP tracking, YOLOv8 segmentation).
+- [x] **v0.2.0-alpha:** Background Environment Reconstruction using 3D Gaussian Splatting (Nerfstudio).
+- [x] **v0.3.0-alpha:** Space-Time projection and dynamic `.glb` 3D model generation.
+- [x] **v1.0.0:** Final interactive 4D visualization UI via web browser.
+
+## 📝 License
+Distributed under the MIT License.
