@@ -1,6 +1,17 @@
-opencv-python==4.8.1.78
-numpy==1.26.2
-ultralytics==8.1.0
-trimesh==4.0.5
-Pillow==10.1.0
-gradio==4.14.0
+# Data Processing & Computer Vision
+numpy
+opencv-python
+Pillow
+
+# AI, Segmentation & Depth Estimation (YOLOv8 & MiDaS)
+torch
+torchvision
+ultralytics
+transformers
+
+# 3D Mesh & Volumetric Projection
+trimesh
+
+# Interactive UI
+gradio
+
