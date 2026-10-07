@@ -2,9 +2,11 @@
 
 An open-source computer vision pipeline designed to extract moving subjects from 2D monocular video and project them into a reconstructed 4D spacetime volumetric space (3D Space + Time). 
 
-![Version](https://img.shields.io/badge/version-v2.1.0--alpha-brightgreen)
+![Version](https://img.shields.io/badge/version-v2.2.0--alpha-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/debo-flow/4D-Volumetric-Trails/blob/main/4D_Volumetric_Trails.ipynb)
 
 ## 🚀 Project Overview
 
@@ -81,6 +83,7 @@ python src/web_viewer.py --model data/output/spacetime_trail.glb
 - [x] **v1.0.0:** Final interactive 4D visualization UI via web browser.
 - [x] **v2.0.0-alpha:** 2.5D Volumetric Depth Estimation (MiDaS integration).
 - [x] **v2.1.0-alpha:** Cinematic Camera Trajectory Smoothing (Savitzky-Golay filter).
+- [x] **v2.2.0-alpha:** Google Colab integration for mass audience cloud execution.
 
 ## 📝 License
 Distributed under the MIT License.
