@@ -1,0 +1,28 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment
+.env
+venv/
+env/
+
+# YOLOv8 models
+*.pt
+
+# Data and Outputs (Ignore large files)
+data/input/*
+data/frames/*
+data/colmap/*
+data/segmented/*
+data/3d_model/*
+data/output/*
+
+# Keep the directory structure by ignoring the ignore file itself
+!data/input/.gitkeep
+!data/frames/.gitkeep
+!data/colmap/.gitkeep
+!data/segmented/.gitkeep
+!data/3d_model/.gitkeep
+!data/output/.gitkeep
