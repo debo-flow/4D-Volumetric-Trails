@@ -5,104 +5,84 @@ import numpy as np
 import trimesh
 from PIL import Image
 
-def create_textured_plane(image_path, transform_matrix, depth=5.0):
-    """
-    Creates a 3D plane (quad) and applies the segmented image as a texture.
-    Positions the plane in 3D space based on the camera's transform matrix.
-    """
-    # Load image to get aspect ratio
-    img = Image.open(image_path)
-    width, height = img.size
-    aspect_ratio = width / height
-
-    # Create a 2D plane (quad)
-    # Scaling it based on aspect ratio and depth
-    plane_width = depth * aspect_ratio
-    plane_height = depth
-    
-    # Define vertices for the plane
-    vertices = np.array([
-        [-plane_width/2, -plane_height/2, -depth],
-        [ plane_width/2, -plane_height/2, -depth],
-        [ plane_width/2,  plane_height/2, -depth],
-        [-plane_width/2,  plane_height/2, -depth]
-    ])
-    
-    # Define faces (two triangles make a square/rectangle)
-    faces = np.array([[0, 1, 2], [0, 2, 3]])
-    
-    # Texture coordinates mapping
-    uvs = np.array([[0, 0], [1, 0], [1, 1], [0, 1]])
-
-    # Create the Trimesh object
-    mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
-    
-    # Apply the camera's 3D transformation (rotation + translation)
-    mesh.apply_transform(transform_matrix)
-    
-    return mesh
-
-def project_spacetime_trails(transforms_path, segmented_dir, output_path):
-    """
-    Reads camera coordinates and segmented images, then builds a unified 3D 
-    scene containing the entire 4D temporal trail.
-    """
-    if not os.path.exists(transforms_path):
-        print(f"[ERROR] Transforms file not found: {transforms_path}")
-        return
-        
-    if not os.path.exists(segmented_dir):
-        print(f"[ERROR] Segmented images directory not found: {segmented_dir}")
-        return
-
-    print("[INFO] Loading camera transforms...")
+def build_spacetime_scene(transforms_path, segmented_dir, depth_dir, output_path):
+    # Load camera poses (transforms.json from Nerfstudio/COLMAP)
+    print(f"[INFO] Loading camera transforms from: {transforms_path}")
     with open(transforms_path, 'r') as f:
-        data = json.load(f)
-
-    frames = data.get('frames', [])
-    if not frames:
-        print("[ERROR] No camera frames found in transforms.json")
-        return
-
-    print(f"[INFO] Found {len(frames)} camera poses. Generating 4D trails...")
-    
-    scene = trimesh.Scene()
-    
-    # Loop through each frame recorded in time
-    for i, frame in enumerate(frames):
-        # Find matching segmented image
-        base_name = os.path.basename(frame['file_path'])
-        # Depending on naming convention, ensure we find the right seg_frame
-        seg_img_name = f"seg_{base_name}"
-        if not seg_img_name.endswith('.png'):
-            seg_img_name = os.path.splitext(seg_img_name)[0] + ".png"
-            
-        img_path = os.path.join(segmented_dir, seg_img_name)
+        transforms = json.load(f)
         
-        if os.path.exists(img_path):
-            transform_matrix = np.array(frame['transform_matrix'])
+    scene = trimesh.Scene()
+    frames = transforms.get("frames", [])
+    
+    print(f"[INFO] Projecting {len(frames)} frames into 4D space...")
+    
+    for frame in frames:
+        # Resolve file names
+        file_path = frame["file_path"]
+        base_name = os.path.basename(file_path)
+        if not base_name.endswith('.png'):
+            base_name = base_name.split('.')[0] + '.png'
             
-            # Create the 3D plane for this specific time-step
-            # depth=5.0 means the subject is placed 5 units away from the camera
-            trail_mesh = create_textured_plane(img_path, transform_matrix, depth=5.0)
-            scene.add_geometry(trail_mesh, node_name=f"frame_{i}")
+        img_path = os.path.join(segmented_dir, base_name)
+        
+        if not os.path.exists(img_path):
+            continue
             
-        if (i + 1) % 50 == 0:
-            print(f"[INFO] Projected {i + 1} frames into 3D space...")
-
-    # Export the entire 4D trail as a 3D object file (.glb or .obj)
+        # Get Camera Pose Matrix
+        pose = np.array(frame["transform_matrix"])
+        
+        try:
+            # 1. Load Segmented Image
+            img = Image.open(img_path).convert("RGBA")
+            w, h = img.size
+            
+            # 2. Create a base 3D Grid Mesh (Plane)
+            # We use a lower resolution grid (e.g., 100x100 max) to keep the final .glb file lightweight
+            res_w, res_h = min(w, 100), min(h, 100)
+            mesh = trimesh.creation.grid((2.0, 2.0 * (h/w)), resolution=(res_w, res_h))
+            
+            # 3. Calculate UV mapping for textures
+            uvs = mesh.visual.uv
+            px = np.clip((uvs[:, 0] * w).astype(int), 0, w - 1)
+            py = np.clip(((1.0 - uvs[:, 1]) * h).astype(int), 0, h - 1)
+            
+            # 4. Apply 2.5D Depth Displacement (If depth map is provided)
+            if depth_dir:
+                depth_path = os.path.join(depth_dir, base_name)
+                if os.path.exists(depth_path):
+                    depth_img = Image.open(depth_path).convert("L")
+                    depth_arr = np.array(depth_img)
+                    
+                    # Normalize depth and push the Z-axis vertices (0.5 is the extrusion scale)
+                    z_displacement = (depth_arr[py, px] / 255.0) * 0.5 
+                    mesh.vertices[:, 2] += z_displacement
+            
+            # 5. Apply the RGBA Image as a Texture Material
+            material = trimesh.visual.material.SimpleMaterial(image=img)
+            mesh.visual = trimesh.visual.TextureVisuals(uv=uvs, image=img, material=material)
+            
+            # 6. Move the 2.5D Mesh to the correct Camera location in 3D Space
+            mesh.apply_transform(pose)
+            
+            # 7. Add to the global scene
+            scene.add_geometry(mesh, geom_name=base_name)
+            print(f"  -> Projected 2.5D mesh for: {base_name}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to process {base_name}: {e}")
+            
+    # Export the final 4D Trail
+    print(f"\n[INFO] Exporting 4D Spacetime trail to {output_path} ...")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     scene.export(output_path)
-    print(f"\n[SUCCESS] 4D Spacetime Trail generated successfully!")
-    print(f"[INFO] 3D Model saved to: {output_path}")
-    print("[INFO] You can view this file in Blender or any 3D viewer.")
+    print("[SUCCESS] 2.5D Volumetric Export complete!")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Project segmented 2D frames into a 3D Spacetime Trail.")
-    parser.add_argument("--transforms", type=str, default="data/3d_model/ns_data/transforms.json", help="Path to Nerfstudio transforms.json")
-    parser.add_argument("--segmented", type=str, default="data/segmented", help="Path to segmented PNGs")
-    parser.add_argument("--output", type=str, default="data/output/spacetime_trail.glb", help="Output 3D model path")
+    parser = argparse.ArgumentParser(description="Project 2.5D subjects into 4D space.")
+    parser.add_argument("--transforms", required=True, help="Path to Nerfstudio transforms.json")
+    parser.add_argument("--segmented", required=True, help="Directory of segmented PNGs")
+    parser.add_argument("--depth", required=False, default=None, help="Directory of depth map PNGs (Optional, enables 2.5D)")
+    parser.add_argument("--output", required=True, help="Output .glb path")
     
     args = parser.parse_args()
-    
-    project_spacetime_trails(args.transforms, args.segmented, args.output)
+    build_spacetime_scene(args.transforms, args.segmented, args.depth, args.output)
