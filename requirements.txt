@@ -9,9 +9,9 @@ torchvision
 ultralytics
 transformers
 
-# 3D Mesh & Volumetric Projection
+# 3D Mesh, Volumetric Projection & Smoothing
 trimesh
+scipy
 
 # Interactive UI
 gradio
-
