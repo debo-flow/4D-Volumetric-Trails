@@ -1,0 +1,22 @@
+# Cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Ignore local data files so they don't bloat the container
+data/input/*
+data/frames/*
+data/colmap/*
+data/segmented/*
+data/3d_model/*
+data/output/*
+
+# Keep directory structure
+!data/input/.gitkeep
+!data/frames/.gitkeep
+!data/colmap/.gitkeep
+!data/segmented/.gitkeep
+!data/3d_model/.gitkeep
+!data/output/.gitkeep
