@@ -13,5 +13,9 @@ transformers
 trimesh
 scipy
 
+# 3D Rendering & Animation (Cinematic Export)
+open3d
+tqdm
+
 # Interactive UI
 gradio
