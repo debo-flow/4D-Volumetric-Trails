@@ -1,86 +1,63 @@
-import cv2
 import os
+import cv2
 import argparse
 import numpy as np
 from ultralytics import YOLO
 
-def segment_subject(frames_dir, output_dir, model_path="yolov8x-seg.pt", confidence_threshold=0.5):
-    """
-    Uses YOLOv8 Segmentation to isolate moving subjects from video frames.
-    The output will be transparent PNGs containing only the subject.
-    """
-    if not os.path.exists(frames_dir):
-        print(f"[ERROR] Frames directory not found: {frames_dir}")
-        return
+def segment_and_track(frames_dir, output_dir):
+    print("[INFO] Loading YOLOv8 Segmentation & ByteTrack Model...")
+    # Using the segmentation model
+    model = YOLO('yolov8n-seg.pt') 
 
-    os.makedirs(output_dir, exist_ok=True)
+    frames = sorted([f for f in os.listdir(frames_dir) if f.endswith(('.png', '.jpg'))])
+    if not frames:
+        print("[ERROR] No frames found in input directory.")
+        return
+        
+    print(f"[INFO] Processing and tracking {len(frames)} frames...")
     
-    # Load YOLOv8 segmentation model
-    print(f"[INFO] Loading YOLOv8 Segmentation Model ({model_path})...")
-    try:
-        model = YOLO(model_path)
-    except Exception as e:
-        print(f"[ERROR] Failed to load model: {e}")
-        return
-
-    # Get sorted list of frames
-    frame_files = sorted([f for f in os.listdir(frames_dir) if f.endswith(('.png', '.jpg'))])
-    if not frame_files:
-        print(f"[ERROR] No frames found in {frames_dir}")
-        return
-
-    print(f"[INFO] Found {len(frame_files)} frames. Starting segmentation...")
-
-    for count, frame_name in enumerate(frame_files):
-        frame_path = os.path.join(frames_dir, frame_name)
-        frame = cv2.imread(frame_path)
+    for frame_name in frames:
+        img_path = os.path.join(frames_dir, frame_name)
+        img = cv2.imread(img_path)
         
-        # Run inference on the frame
-        results = model(frame, conf=confidence_threshold, verbose=False)
+        # Run YOLOv8 tracking (persist=True keeps memory of objects across frames)
+        # classes=[0] ensures it only tracks people (class 0). Remove this to track cars, animals, etc.
+        results = model.track(img, persist=True, classes=[0], tracker="bytetrack.yaml", verbose=False)
         
-        # Create a transparent background (alpha channel)
-        transparent_bg = np.zeros((frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+        # Check if anything was detected and tracked in the current frame
+        if results[0].boxes is not None and results[0].boxes.id is not None and results[0].masks is not None:
+            masks = results[0].masks.data.cpu().numpy()
+            track_ids = results[0].boxes.id.int().cpu().tolist()
+            
+            h, w = img.shape[:2]
+            
+            for mask, track_id in zip(masks, track_ids):
+                # Resize YOLO's low-res mask back to original image size
+                mask_resized = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+                
+                # Create the transparent alpha channel
+                alpha = (mask_resized * 255).astype(np.uint8)
+                
+                # Combine original RGB with Alpha to make RGBA
+                b, g, r = cv2.split(img)
+                rgba = cv2.merge((b, g, r, alpha))
+                
+                # Create a specific folder for this Tracked ID (e.g., subject_1, subject_2)
+                id_dir = os.path.join(output_dir, f"subject_{track_id}")
+                os.makedirs(id_dir, exist_ok=True)
+                
+                # Save the frame
+                out_path = os.path.join(id_dir, frame_name)
+                cv2.imwrite(out_path, rgba)
+                
+        print(f"  -> Tracked and extracted: {frame_name}")
         
-        if results[0].masks is not None:
-            # Get the mask of the primary subject (assuming largest/most confident detection)
-            # You might need to adjust logic here if there are multiple subjects you want to track
-            mask = results[0].masks.data[0].cpu().numpy()
-            mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
-            
-            # Convert mask to 3 channels for easier masking of original frame
-            mask_3ch = np.stack([mask]*3, axis=2)
-            
-            # Extract subject pixels
-            subject_rgb = np.where(mask_3ch > 0.5, frame, 0)
-            
-            # Create alpha channel where mask > 0.5 is solid (255), else transparent (0)
-            alpha_channel = np.where(mask > 0.5, 255, 0).astype(np.uint8)
-            
-            # Combine RGB and Alpha
-            extracted_subject = np.dstack((subject_rgb, alpha_channel))
-        else:
-            # If no subject found, save a completely transparent frame
-            extracted_subject = transparent_bg
-            
-        # Save as PNG to preserve transparency
-        output_path = os.path.join(output_dir, f"seg_{frame_name}")
-        # Note: We save as PNG even if input was JPG to keep alpha channel
-        if not output_path.endswith('.png'):
-             output_path = os.path.splitext(output_path)[0] + ".png"
-        cv2.imwrite(output_path, extracted_subject)
-        
-        if (count + 1) % 50 == 0:
-            print(f"[INFO] Segmented {count + 1} frames...")
-            
-    print(f"[SUCCESS] Subject segmentation complete. Output saved to {output_dir}")
+    print(f"\n[SUCCESS] Multi-Subject Tracking complete! Check the '{output_dir}' folder for individual subject directories.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract moving subjects using YOLOv8 Segmentation.")
-    parser.add_argument("--frames", type=str, default="data/frames", help="Path to input frames directory")
-    parser.add_argument("--output", type=str, default="data/segmented", help="Directory to save segmented subject PNGs")
-    parser.add_argument("--model", type=str, default="yolov8x-seg.pt", help="YOLO segmentation model path/name (e.g., yolov8n-seg.pt for faster, yolov8x-seg.pt for accurate)")
-    parser.add_argument("--conf", type=float, default=0.5, help="Confidence threshold for detection")
+    parser = argparse.ArgumentParser(description="Isolate and track multiple subjects using YOLOv8 + ByteTrack.")
+    parser.add_argument("--frames", required=True, help="Path to input frames")
+    parser.add_argument("--output", required=True, help="Path to save tracked subject folders")
     
     args = parser.parse_args()
-    
-    segment_subject(args.frames, args.output, args.model, args.conf)
+    segment_and_track(args.frames, args.output)
