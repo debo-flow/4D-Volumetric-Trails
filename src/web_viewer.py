@@ -24,7 +24,7 @@ def run_cmd(cmd_list, step_name):
         log += f"❌ [ERROR] {step_name} failed!\n{e.stdout}\n{e.stderr}\n\n"
         return False, log
 
-def run_full_pipeline(video_path, smooth_window, include_nerfstudio):
+def run_full_pipeline(video_path, smooth_window, reduction_ratio, include_nerfstudio):
     if not video_path:
         return "⚠️ Error: Please upload an input video first!", None
 
@@ -85,13 +85,21 @@ def run_full_pipeline(video_path, smooth_window, include_nerfstudio):
     yield logs, None
     if not ok: return
 
-    # Step 8: 2.5D Spacetime Projection
-    output_glb = "data/output/spacetime_trail.glb"
-    ok, out = run_cmd(["python", "src/spacetime_projector.py", "--transforms", transforms_4d, "--segmented", "data/segmented", "--depth", "data/depth", "--output", output_glb], "Step 8: 4D Volumetric Mesh Projection")
+    # Step 8: 2.5D Spacetime Projection (Raw High-Poly Mesh)
+    raw_glb = "data/output/spacetime_trail_raw.glb"
+    ok, out = run_cmd(["python", "src/spacetime_projector.py", "--transforms", transforms_4d, "--segmented", "data/segmented", "--depth", "data/depth", "--output", raw_glb], "Step 8: 4D Volumetric Mesh Projection")
     logs += out
-    if ok and os.path.exists(output_glb):
-        logs += "🎉 FULL PIPELINE COMPLETE! Your 4D model is loaded on the right."
-        yield logs, output_glb
+    yield logs, None
+    if not ok: return
+
+    # Step 9: AI Mesh Optimization (Quadric Decimation)
+    final_glb = "data/output/spacetime_trail.glb"
+    ok, out = run_cmd(["python", "src/mesh_optimizer.py", "--input", raw_glb, "--output", final_glb, "--reduction", str(float(reduction_ratio))], "Step 9: Quadric Mesh Optimization")
+    logs += out
+    
+    if ok and os.path.exists(final_glb):
+        logs += "🎉 FULL PIPELINE COMPLETE! Your optimized 4D model is loaded on the right."
+        yield logs, final_glb
     else:
         yield logs, None
 
@@ -109,8 +117,8 @@ def launch_studio(default_model):
     with gr.Blocks(title="4D-Volumetric-Trails Studio", theme=gr.themes.Soft()) as demo:
         gr.Markdown(
             """
-            # 🌌 4D-Volumetric-Trails: No-Code Web Studio
-            **End-to-End Spatiotemporal 4D Reconstruction, Multi-Subject Tracking & Volumetric Rendering Suite**
+            # 🌌 4D-Volumetric-Trails: No-Code Web Studio (v5.0.0)
+            **End-to-End Spatiotemporal 4D Reconstruction, Multi-Subject Tracking, Mesh Compression & Volumetric Rendering Suite**
             """
         )
 
@@ -121,17 +129,18 @@ def launch_studio(default_model):
                     with gr.Column(scale=1):
                         video_input = gr.Video(label="Upload Monocular Input Video (.mp4)")
                         smooth_slider = gr.Slider(minimum=5, maximum=31, step=2, value=11, label="Cinematic Camera Smoothing Window (Odd Numbers)")
+                        reduction_slider = gr.Slider(minimum=0.1, maximum=0.9, step=0.05, value=0.75, label="Mesh Polygon Reduction Ratio (0.75 = 75% Smaller File)")
                         nerf_checkbox = gr.Checkbox(value=True, label="Run Step 5: Nerfstudio 3DGS Background Training")
                         run_btn = gr.Button("🔥 Run Full 4D Spacetime Pipeline", variant="primary")
                     
                     with gr.Column(scale=1):
-                         studio_model_out = gr.Model3D(label="Generated 4D Spacetime Trail (.glb)", value=default_model if os.path.exists(default_model) else None)
+                        studio_model_out = gr.Model3D(label="Optimized 4D Spacetime Trail (.glb)", value=default_model if os.path.exists(default_model) else None)
                 
                 pipeline_logs = gr.Textbox(label="Live Pipeline Execution Logs", lines=14, interactive=False)
                 
                 run_btn.click(
                     fn=run_full_pipeline,
-                    inputs=[video_input, smooth_slider, nerf_checkbox],
+                    inputs=[video_input, smooth_slider, reduction_slider, nerf_checkbox],
                     outputs=[pipeline_logs, studio_model_out]
                 )
 
